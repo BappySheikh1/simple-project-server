@@ -44,9 +44,12 @@ async function run(){
 
        app.get('/users',async(req,res)=>{
         const quary = {}
+        const page =parseInt(req.query.page);
+        const size = parseInt(req.query.size)
         const cursor = userCollection.find(quary)
-        const result = await cursor.toArray()
-        res.send(result)
+        const result = await cursor.skip(page*size).limit(size).toArray()
+        const count =await userCollection.estimatedDocumentCount()
+        res.send({count,result})
        })
 
        app.get('/users/:id',async(req,res)=>{
