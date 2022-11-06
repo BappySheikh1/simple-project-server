@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
+const jwt=require('jsonwebtoken');
 const app = express()
 const port =process.env.PORT || 5000 ;
 
@@ -10,14 +11,37 @@ app.use(cors())
 app.use(express.json())
 
 
-const uri = "mongodb+srv://simplePractice:LwzS7DE30WI7glh9@cluster0.frkx4db.mongodb.net/?retryWrites=true&w=majority";
+const uri = process.env.ACCESS_URL_MONGODB;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
+ 
+function verifyJWT(req,res,next){
+    const authHeaders=req.headers.authorization
+    if(!authHeaders){
+        return res.status(401).send({message:'unAuthorization access'})
+    }
+    const token =authHeaders.split(' ')[1]
+    jwt.verify(token,process.env.ACCESS_JWT_TOKEN_SECRET,function(err,decoded){
+        if(err){
+            return res.status(403).send({message : 'Forbidden access'})
+        }
+        req.decoded = decoded
+        next();
+    })
+}
+
 
 async function run(){
     try{
        const userCollection=client.db('UserDataColllection').collection('users');
        const userCollectionPost=client.db('UserDataColllection').collection('userPost');
        
+
+       app.post('/jwt', (req,res)=>{
+        const user=req.body
+        const token=jwt.sign(user,process.env.ACCESS_JWT_TOKEN_SECRET,{expiresIn:'1d'})
+        res.send({token})
+       })
+
        app.get('/users',async(req,res)=>{
         const quary = {}
         const cursor = userCollection.find(quary)
@@ -31,21 +55,33 @@ async function run(){
         const services= await userCollection.findOne(quary)
         res.send(services)
     })
+
 //    post method
-   app.get('/usersPost',async(req,res)=>{
-      const quary={}
-      const cursor=userCollectionPost.find(quary)
+   app.get('/usersPost',verifyJWT,async(req,res)=>{
+    const decoded=req.decoded
+    
+    if(decoded.email !== req?.query?.email){
+        res.status(403).send({message : 'Forbidden access'})
+    }
+    let query={}
+    if(req?.query?.email){
+        query={
+            email: req?.query?.email
+        }
+    }
+      const cursor=userCollectionPost.find(query)
       const result=await cursor.toArray()
       res.send(result)
    })
+
   
     app.post('/usersPost',async (req,res)=>{
-       console.log(req.body);
        const user=req.body
        const result = await userCollectionPost.insertOne(user)
        res.send(result)
     })
    
+
     app.get('/usersPost/:id',async(req,res)=>{
         const id =req.params.id
         const quary={_id: ObjectId(id)}
@@ -53,6 +89,7 @@ async function run(){
         res.send(result)
      })
 
+     
      app.delete('/usersPost/:id',async (req,res)=>{
         const id =req.params.id
         const quary ={_id: ObjectId(id)}
